@@ -10,16 +10,23 @@ PSAppDeployToolkit - This script performs the installation or uninstallation of 
 
 The script imports the PSAppDeployToolkit module which contains the logic and functions required to install or uninstall an application.
 
+PSAppDeployToolkit is licensed under the GNU LGPLv3 License - (C) 2025 PSAppDeployToolkit Team (Sean Lillis, Dan Cunningham, Muhammad Mashwani, Mitch Richters, Dan Gough).
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the
+Free Software Foundation, either version 3 of the License, or any later version. This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+for more details. You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <http://www.gnu.org/licenses/>.
+
 .PARAMETER DeploymentType
 The type of deployment to perform.
 
 .PARAMETER DeployMode
-Specifies whether the installation should be run in Interactive (shows dialogs), Silent (no dialogs), NonInteractive (dialogs without prompts) mode, or Auto (shows dialogs if a user is logged on, device is not in the OOBE, and there's no running apps to close).
+Specifies whether the installation should be run in Interactive (shows dialogs), Silent (no dialogs), or NonInteractive (dialogs without prompts) mode.
 
-Silent mode is automatically set if it is detected that the process is not user interactive, no users are logged on, the device is in Autopilot mode, or there's specified processes to close that are currently running.
+NonInteractive mode is automatically set if it is detected that the process is not user interactive.
 
-.PARAMETER SuppressRebootPassThru
-Suppresses the 3010 return code (requires restart) from being passed back to the parent process (e.g. SCCM) if detected from an installation. If 3010 is passed back to SCCM, a reboot prompt will be triggered.
+.PARAMETER AllowRebootPassThru
+Allows the 3010 return code (requires restart) to be passed back to the parent process (e.g. SCCM) if detected from an installation. If 3010 is passed back to SCCM, a reboot prompt will be triggered.
 
 .PARAMETER TerminalServerMode
 Changes to "user install mode" and back to "user execute mode" for installing/uninstalling applications for Remote Desktop Session Hosts/Citrix servers.
@@ -28,16 +35,16 @@ Changes to "user install mode" and back to "user execute mode" for installing/un
 Disables logging to file for the script.
 
 .EXAMPLE
-powershell.exe -File Invoke-AppDeployToolkit.ps1
+powershell.exe -File Invoke-AppDeployToolkit.ps1 -DeployMode Silent
 
 .EXAMPLE
-powershell.exe -File Invoke-AppDeployToolkit.ps1 -DeployMode Silent
+powershell.exe -File Invoke-AppDeployToolkit.ps1 -AllowRebootPassThru
 
 .EXAMPLE
 powershell.exe -File Invoke-AppDeployToolkit.ps1 -DeploymentType Uninstall
 
 .EXAMPLE
-Invoke-AppDeployToolkit.exe -DeploymentType Install -DeployMode Silent
+Invoke-AppDeployToolkit.exe -DeploymentType "Install" -DeployMode "Silent"
 
 .INPUTS
 None. You cannot pipe objects to this script.
@@ -59,18 +66,18 @@ https://psappdeploytoolkit.com
 [CmdletBinding()]
 param
 (
-    # Default is 'Install'.
     [Parameter(Mandatory = $false)]
     [ValidateSet('Install', 'Uninstall', 'Repair')]
+    [PSDefaultValue(Help = 'Install', Value = 'Install')]
     [System.String]$DeploymentType,
 
-    # Default is 'Auto'. Don't hard-code this unless required.
     [Parameter(Mandatory = $false)]
-    [ValidateSet('Auto', 'Interactive', 'NonInteractive', 'Silent')]
+    [ValidateSet('Interactive', 'Silent', 'NonInteractive')]
+    [PSDefaultValue(Help = 'Interactive', Value = 'Interactive')]
     [System.String]$DeployMode,
 
     [Parameter(Mandatory = $false)]
-    [System.Management.Automation.SwitchParameter]$SuppressRebootPassThru,
+    [System.Management.Automation.SwitchParameter]$AllowRebootPassThru,
 
     [Parameter(Mandatory = $false)]
     [System.Management.Automation.SwitchParameter]$TerminalServerMode,
@@ -84,23 +91,19 @@ param
 ## MARK: Variables
 ##================================================
 
-# Zero-Config MSI support is provided when "AppName" is null or empty.
-# By setting the "AppName" property, Zero-Config MSI will be disabled.
 $adtSession = @{
     # App variables.
-    AppVendor = ''
-    AppName = ''
+    AppVendor = 'iClicker'
+    AppName = 'iCicker'
     AppVersion = ''
     AppArch = ''
-    AppLang = 'EN'
-    AppRevision = '01'
+    AppLang = ''
+    AppRevision = ''
     AppSuccessExitCodes = @(0)
     AppRebootExitCodes = @(1641, 3010)
-    AppProcessesToClose = @()  # Example: @('excel', @{ Name = 'winword'; Description = 'Microsoft Word' })
     AppScriptVersion = '1.0.0'
-    AppScriptDate = '2026-01-14'
-    AppScriptAuthor = '<author name>'
-    RequireAdmin = $true
+    AppScriptDate = '05/27/2026'
+    AppScriptAuthor = 'Will Jarvill'
 
     # Install Titles (Only set here to override defaults set by the toolkit).
     InstallName = ''
@@ -108,32 +111,19 @@ $adtSession = @{
 
     # Script variables.
     DeployAppScriptFriendlyName = $MyInvocation.MyCommand.Name
+    DeployAppScriptVersion = '4.0.6'
     DeployAppScriptParameters = $PSBoundParameters
-    DeployAppScriptVersion = '4.1.8'
 }
 
 function Install-ADTDeployment
 {
-    [CmdletBinding()]
-    param
-    (
-    )
-
     ##================================================
     ## MARK: Pre-Install
     ##================================================
     $adtSession.InstallPhase = "Pre-$($adtSession.DeploymentType)"
 
-    ## Show Welcome Message, close processes if specified, allow up to 3 deferrals, verify there is enough disk space to complete the install, and persist the prompt.
-    $saiwParams = @{
-        CheckDiskSpace = $true
-        PersistPrompt = $true
-    }
-    if ($adtSession.AppProcessesToClose.Count -gt 0)
-    {
-        $saiwParams.Add('CloseProcesses', $adtSession.AppProcessesToClose)
-    }
-    Show-ADTInstallationWelcome @saiwParams
+    ## Show Welcome Message, close Internet Explorer and any other processes if required, allow up to 3 deferrals, verify there is enough disk space to complete the install, and persist the prompt.
+    Show-ADTInstallationWelcome -CloseProcesses iexplore -CheckDiskSpace -PersistPrompt
 
     ## Show Progress Message (with the default message).
     Show-ADTInstallationProgress
@@ -152,7 +142,7 @@ function Install-ADTDeployment
         $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
         if ($adtSession.DefaultMstFile)
         {
-            $ExecuteDefaultMSISplat.Add('Transforms', $adtSession.DefaultMstFile)
+            $ExecuteDefaultMSISplat.Add('Transform', $adtSession.DefaultMstFile)
         }
         Start-ADTMsiProcess @ExecuteDefaultMSISplat
         if ($adtSession.DefaultMspFiles)
@@ -162,7 +152,7 @@ function Install-ADTDeployment
     }
 
     ## <Perform Installation tasks here>
-
+    Copy-ADTFile -Path "$($adtSession.DirFiles)\*" -Destination 'C:\' -Recurse
 
     ##================================================
     ## MARK: Post-Install
@@ -170,32 +160,23 @@ function Install-ADTDeployment
     $adtSession.InstallPhase = "Post-$($adtSession.DeploymentType)"
 
     ## <Perform Post-Installation tasks here>
-
-
+    Copy-ADTFile -Path "$($adtSession.DirSupportFiles)\iclicker.lnk" -Destination "$envCommonStartMenuPrograms"
     ## Display a message at the end of the install.
     #if (!$adtSession.UseDefaultMsi)
     #{
-        #Show-ADTInstallationPrompt -Message 'You can customize text to appear at the end of an install or remove it completely for unattended installations.' -ButtonRightText 'OK' -NoWait
+    #    Show-ADTInstallationPrompt -Message 'The application has been successfully installed.' -ButtonRightText 'OK' -Icon Information -NoWait
     #}
 }
 
 function Uninstall-ADTDeployment
 {
-    [CmdletBinding()]
-    param
-    (
-    )
-
     ##================================================
     ## MARK: Pre-Uninstall
     ##================================================
     $adtSession.InstallPhase = "Pre-$($adtSession.DeploymentType)"
 
-    ## If there are processes to close, show Welcome Message with a 60 second countdown before automatically closing.
-    if ($adtSession.AppProcessesToClose.Count -gt 0)
-    {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
-    }
+    ## Show Welcome Message, close Internet Explorer with a 60 second countdown before automatically closing. Add other processes that may need to quit here.
+    Show-ADTInstallationWelcome -CloseProcesses iexplore -PersistPrompt
 
     ## Show Progress Message (with the default message).
     Show-ADTInstallationProgress
@@ -214,13 +195,13 @@ function Uninstall-ADTDeployment
         $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
         if ($adtSession.DefaultMstFile)
         {
-            $ExecuteDefaultMSISplat.Add('Transforms', $adtSession.DefaultMstFile)
+            $ExecuteDefaultMSISplat.Add('Transform', $adtSession.DefaultMstFile)
         }
         Start-ADTMsiProcess @ExecuteDefaultMSISplat
     }
 
     ## <Perform Uninstallation tasks here>
-
+    Remove-ADTFile -LiteralPath 'C:\iclicker' -Recurse
 
     ##================================================
     ## MARK: Post-Uninstallation
@@ -228,25 +209,19 @@ function Uninstall-ADTDeployment
     $adtSession.InstallPhase = "Post-$($adtSession.DeploymentType)"
 
     ## <Perform Post-Uninstallation tasks here>
+    Remove-ADTFile -LiteralPath "$envCommonStartMenuPrograms\iClicker.lnk"
+
 }
 
 function Repair-ADTDeployment
 {
-    [CmdletBinding()]
-    param
-    (
-    )
-
     ##================================================
     ## MARK: Pre-Repair
     ##================================================
     $adtSession.InstallPhase = "Pre-$($adtSession.DeploymentType)"
 
-    ## If there are processes to close, show Welcome Message with a 60 second countdown before automatically closing.
-    if ($adtSession.AppProcessesToClose.Count -gt 0)
-    {
-        Show-ADTInstallationWelcome -CloseProcesses $adtSession.AppProcessesToClose -CloseProcessesCountdown 60
-    }
+    ## Show Welcome Message, close Internet Explorer with a 60 second countdown before automatically closing.
+    Show-ADTInstallationWelcome -CloseProcesses iexplore -CloseProcessesCountdown 60
 
     ## Show Progress Message (with the default message).
     Show-ADTInstallationProgress
@@ -265,7 +240,7 @@ function Repair-ADTDeployment
         $ExecuteDefaultMSISplat = @{ Action = $adtSession.DeploymentType; FilePath = $adtSession.DefaultMsiFile }
         if ($adtSession.DefaultMstFile)
         {
-            $ExecuteDefaultMSISplat.Add('Transforms', $adtSession.DefaultMstFile)
+            $ExecuteDefaultMSISplat.Add('Transform', $adtSession.DefaultMstFile)
         }
         Start-ADTMsiProcess @ExecuteDefaultMSISplat
     }
@@ -294,21 +269,26 @@ Set-StrictMode -Version 1
 # Import the module and instantiate a new session.
 try
 {
-    # Import the module locally if available, otherwise try to find it from PSModulePath.
-    if (Test-Path -LiteralPath "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1" -PathType Leaf)
+    $moduleName = if ([System.IO.File]::Exists("$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1"))
     {
-        Get-ChildItem -LiteralPath "$PSScriptRoot\PSAppDeployToolkit" -Recurse -File | Unblock-File -ErrorAction Ignore
-        Import-Module -FullyQualifiedName @{ ModuleName = "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1"; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.1.8' } -Force
+        Get-ChildItem -LiteralPath $PSScriptRoot\PSAppDeployToolkit -Recurse -File | Unblock-File -ErrorAction Ignore
+        "$PSScriptRoot\PSAppDeployToolkit\PSAppDeployToolkit.psd1"
     }
     else
     {
-        Import-Module -FullyQualifiedName @{ ModuleName = 'PSAppDeployToolkit'; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.1.8' } -Force
+        'PSAppDeployToolkit'
     }
-
-    # Open a new deployment session, replacing $adtSession with a DeploymentSession.
-    $iadtParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation
-    $adtSession = Remove-ADTHashtableNullOrEmptyValues -Hashtable $adtSession
-    $adtSession = Open-ADTSession @adtSession @iadtParams -PassThru
+    Import-Module -FullyQualifiedName @{ ModuleName = $moduleName; Guid = '8c3c366b-8606-4576-9f2d-4051144f7ca2'; ModuleVersion = '4.0.6' } -Force
+    try
+    {
+        $iadtParams = Get-ADTBoundParametersAndDefaultValues -Invocation $MyInvocation
+        $adtSession = Open-ADTSession -SessionState $ExecutionContext.SessionState @adtSession @iadtParams -PassThru
+    }
+    catch
+    {
+        Remove-Module -Name PSAppDeployToolkit* -Force
+        throw
+    }
 }
 catch
 {
@@ -321,37 +301,26 @@ catch
 ## MARK: Invocation
 ##================================================
 
-# Commence the actual deployment operation.
 try
 {
-    # Import any found extensions before proceeding with the deployment.
-    Get-ChildItem -LiteralPath $PSScriptRoot -Directory | & {
+    Get-Item -Path $PSScriptRoot\PSAppDeployToolkit.* | & {
         process
         {
-            if ($_.Name -match 'PSAppDeployToolkit\..+$')
-            {
-                Get-ChildItem -LiteralPath $_.FullName -Recurse -File | Unblock-File -ErrorAction Ignore
-                Import-Module -Name $_.FullName -Force
-            }
+            Get-ChildItem -LiteralPath $_.FullName -Recurse -File | Unblock-File -ErrorAction Ignore
+            Import-Module -Name $_.FullName -Force
         }
     }
-
-    # Invoke the deployment and close out the session.
     & "$($adtSession.DeploymentType)-ADTDeployment"
     Close-ADTSession
 }
 catch
 {
-    # An unhandled error has been caught.
-    $mainErrorMessage = "An unhandled error within [$($MyInvocation.MyCommand.Name)] has occurred.`n$(Resolve-ADTErrorRecord -ErrorRecord $_)"
-    Write-ADTLogEntry -Message $mainErrorMessage -Severity 3
-
-    ## Error details hidden from the user by default. Show a simple dialog with full stack trace:
-    # Show-ADTDialogBox -Text $mainErrorMessage -Icon Stop -NoWait
-
-    ## Or, a themed dialog with basic error message:
-    # Show-ADTInstallationPrompt -Message "$($adtSession.DeploymentType) failed at line $($_.InvocationInfo.ScriptLineNumber), char $($_.InvocationInfo.OffsetInLine):`n$($_.InvocationInfo.Line.Trim())`n`nMessage:`n$($_.Exception.Message)" -ButtonRightText OK -Icon Error -NoWait
-
+    Write-ADTLogEntry -Message ($mainErrorMessage = Resolve-ADTErrorRecord -ErrorRecord $_) -Severity 3
+    Show-ADTDialogBox -Text $mainErrorMessage -Icon Stop | Out-Null
     Close-ADTSession -ExitCode 60001
+}
+finally
+{
+    Remove-Module -Name PSAppDeployToolkit* -Force
 }
 
